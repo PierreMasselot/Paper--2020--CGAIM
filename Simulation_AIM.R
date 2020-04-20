@@ -5,7 +5,7 @@
 #                      Alternative estimations
 #
 ###############################################################################
-setwd("D:/Pierre Masselot/AIM")
+setwd("C:/Users/masselpl/Documents/Recherche/2017-2019 - Post-doc/Programmes/R/2 - Indices PPR/Paper--2020--CGAIM")
 
 library(parallel)
 library(MASS)
@@ -23,7 +23,9 @@ library(osqp)
 library(np)
 library(devtools)
 
-load_all("gaim")
+# Should be installed from github
+# install_github("PierreMasselot/cgaim")
+library(cgaim)
 source("Benchmark_models.R")
 source("Simulation_functions.R")
 
@@ -32,7 +34,7 @@ source("Simulation_functions.R")
 exp_name <- "Collinearity_study" # Experiment name
 
 constant_parameters <- within(list(),{
-  ns <- 5000 # Number of simulations
+  ns <- 5 # Number of simulations
   n <- 1000
   
   Beta0 <- 0  # Intercept of the whole model
@@ -74,7 +76,7 @@ vpind <- rep(1:nvp, vpvec)
 vpval <- unlist(lapply(vpvec, seq))
 
 # Initialize cluster for parallel computation
-cl <- makeCluster(8)
+cl <- makeCluster(2)
 # Transfer objects in cluster
 clusterExport(cl, ls())
 clusterEvalQ(cl, {
@@ -93,7 +95,7 @@ clusterEvalQ(cl, {
   library(osqp)
   library(np)
   library(devtools)
-  load_all("gaim")
+  load_all("C:/Users/masselpl/Documents/Recherche/2017-2019 - Post-doc/Programmes/R/2 - Indices PPR/gaim")
 })
 
 # Initialize result objects
@@ -129,16 +131,15 @@ for (k in 1:vpd){
   deb <- Sys.time()
   # Apply model
   results <- parLapply(cl, datSim[[k]]$Y, function(y){
-    gaim_gn(y = y, x = Xall, index = rep(1:p, pvec), 
-      w = rep(1/kpars$n, kpars$n), 
-      alpha.control = list(norm.type = "sum"),
-      tol = 5e-3)
+    dat <- data.frame(y, datSim[[k]]$X)
+    cgaim(y ~ g(X1, X2, X3) + g(X1.1, X2.1, X3.1) + g(X1.2, X2.2, X3.2),
+      data = dat, alpha.control = list(norm.type = "sum"))
   })
   # Execution time
   exectime[[1]][k] <- Sys.time() - deb
   # Estimated alphas and functions
-  g_all[[1]][[k]] <- sapply(results, "[[", "gz", simplify = "array")
-  z_all[[1]][[k]] <- sapply(results, "[[", "z", simplify = "array")
+  g_all[[1]][[k]] <- sapply(results, "[[", "gfit", simplify = "array")
+  z_all[[1]][[k]] <- sapply(results, "[[", "indexfit", simplify = "array")
   alphas <- sapply(results, "[[", "alpha")
   alpha_all[[1]][[k]] <- apply(alphas, 2, unlist)
   yhat_all[[1]][[k]] <- sapply(results, "[[", "fitted")
@@ -147,20 +148,19 @@ for (k in 1:vpd){
   deb <- Sys.time()
   # Apply model
   results <- parLapply(cl, datSim[[k]]$Y, function(y){
-    gaim_gn(y = y, x = Xall, index = rep(1:p, pvec), 
-      w = rep(1/kpars$n, kpars$n), 
-      alpha.control = list(norm.type = "sum", 
-        Cmat = const.matrix(index = rep(1:3, each = 3), monotone = c(-1, 1, 0), 
-    sign.const = rep(1, 3))),
-      smooth.control = list(shape = c("mpi", "mpi", "cx")),
-      tol = 5e-3
-    )
+    dat <- data.frame(y, datSim[[k]]$X)
+    cgaim(y ~ g(X1, X2, X3, bs = "mpi", 
+        constraints = list(monotone = -1, sign.const = 1)) + 
+      g(X1.1, X2.1, X3.1, bs = "mpi", 
+        constraints = list(monotone = 1, sign.const = 1)) + 
+      g(X1.2, X2.2, X3.2, bs = "cx", constraints = list(sign.const = 1)),
+      data = dat, alpha.control = list(norm.type = "sum"))
   })
   # Execution time
   exectime[[2]][k] <- Sys.time() - deb
   # Estimated alphas and functions
-  g_all[[2]][[k]] <- sapply(results, "[[", "gz", simplify = "array")
-  z_all[[2]][[k]] <- sapply(results, "[[", "z", simplify = "array")
+  g_all[[2]][[k]] <- sapply(results, "[[", "gfit", simplify = "array")
+  z_all[[2]][[k]] <- sapply(results, "[[", "indexfit", simplify = "array")
   alphas <- sapply(results, "[[", "alpha")
   alpha_all[[2]][[k]] <- apply(alphas, 2, unlist)
   yhat_all[[2]][[k]] <- sapply(results, "[[", "fitted")
@@ -169,18 +169,20 @@ for (k in 1:vpd){
   deb <- Sys.time()
   # Apply model
   results <- parLapply(cl, datSim[[k]]$Y, function(y){
-    gaim_gn(y = y, x = Xall, index = rep(1:p, pvec), 
-      w = rep(1/kpars$n, kpars$n), 
-      alpha.control = list(norm.type = "sum", 
-        Cmat = const.matrix(index = rep(1:3, each = 3), monotone = c(0, -1, 1), 
-    sign.const = rep(1, 3))),
-    tol = 5e-3)
+    dat <- data.frame(y, datSim[[k]]$X)
+    cgaim(y ~ g(X1, X2, X3, bs = "mpi", 
+        constraints = list(sign.const = 1)) + 
+      g(X1.1, X2.1, X3.1, bs = "mpi", 
+        constraints = list(monotone = -1, sign.const = 1)) + 
+      g(X1.2, X2.2, X3.2, bs = "cx", 
+        constraints = list(monotone = 1, sign.const = 1)),
+      data = dat, alpha.control = list(norm.type = "sum"))
   })
   # Execution time
   exectime[[3]][k] <- Sys.time() - deb
   # Estimated alphas and functions
-  g_all[[3]][[k]] <- sapply(results, "[[", "gz", simplify = "array")
-  z_all[[3]][[k]] <- sapply(results, "[[", "z", simplify = "array")
+  g_all[[3]][[k]] <- sapply(results, "[[", "gfit", simplify = "array")
+  z_all[[3]][[k]] <- sapply(results, "[[", "indexfit", simplify = "array")
   alphas <- sapply(results, "[[", "alpha")
   alpha_all[[3]][[k]] <- apply(alphas, 2, unlist)
   yhat_all[[3]][[k]] <- sapply(results, "[[", "fitted")  

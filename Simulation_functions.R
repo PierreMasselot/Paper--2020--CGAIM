@@ -26,7 +26,7 @@ generate_data <- function(n, ns, Alpha, Gfuns, Gpars, Beta0, Beta1, Xcorr,
   Sigma <- lapply(pvec, diag)
   Sigma[[1]][upper.tri(Sigma[[1]])] <- Sigma[[1]][lower.tri(Sigma[[1]])] <- Xcorr
   mu <- lapply(pvec, rep, x = 0)
-  X <- Map(mvrnorm, n = n, mu = mu, Sigma = Sigma)
+  X <- Map(MASS::mvrnorm, n = n, mu = mu, Sigma = Sigma)
   
   # Indices
   Z <- mapply("%*%", X, Alpha)
