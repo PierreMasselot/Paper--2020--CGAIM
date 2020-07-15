@@ -6,25 +6,24 @@
 #######################################################################
 library(splines)
 library(mgcv)
-library(devtools)
+library(devtools) # Only to install the cgaim package
 library(scam)
 library(parallel)
-
-setwd("C:/Users/masselpl/Documents/Recherche/2017-2019 - Post-doc/Programmes/R/2 - Indices PPR/Paper--2020--CGAIM")
 
 # Should be installed from github
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
-source("Useful_functions.R")
 
-respath <- "C:/Users/masselpl/Documents/Recherche/2017-2019 - Post-doc/Resultats/Part 2 - GAIM/Article V4"
+source("0_Useful_functions.R")
+
+respath <- "Results"
 
 #---------------------------------------------------
 #  Data reading
 #---------------------------------------------------
 
 # Read data
-dataread <- read.table("CMMdata.csv", sep = ";", header = T)
+dataread <- read.table("Data/1_HeatData.csv", sep = ";", header = T)
 
 # Keep only summer season
 summer <- 6:8
@@ -55,26 +54,24 @@ laggedX <- lapply(Xvars, dlag, 0:2)
 for (j in 1:p){
   colnames(laggedX[[j]]) <- sprintf("l%i", 0:2)
 }
-datamod <- data.frame(datatab, laggedX)
+datamod <- c(datatab[c("Death", "dos", "Year")], laggedX)
 
 #---- Fit the cGAIM
 # The gj of Tmin, Tmax and Vp are constrained to be increasing
 # The alphas are constrained to be decreasing with lag and all positive
 # The norm is the L1 to ensure that each index is a weighted average
-result <- cgaim(Death ~ g(Tmin.l0, Tmin.l1, Tmin.l2, bs = "mpi", 
-    constraints = list(monotone = -1, sign.const = 1)) + 
-  g(Tmax.l0, Tmax.l1, Tmax.l2, bs = "mpi", 
-    constraints = list(monotone = -1, sign.const = 1)) +
-  g(Vp.l0, Vp.l1, Vp.l2, bs = "mpi", 
-    constraints = list(monotone = -1, sign.const = 1)) +
-  dos + Year, data = datamod, algo.control = list(keep.trace = TRUE),
-  alpha.control = list(norm.type = "sum", init.type = "random"),
+result <- cgaim(
+  Death ~ g(Tmin, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) + 
+    g(Tmax, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) +
+    g(Vp, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) +
+    s(dos) + s(Year), 
+  data = datamod, alpha.control = list(norm.type = "sum"),
   smooth.control = list(optimizer = "efs")
 )
 
 #---- Confidence intervals through bootstrap
 B <- 2000
-n <- nrow(datamod) - 2
+n <- nrow(datatab) - 2
 
 # Draw bootstrap samples
 datablock <- split(1:n, datatab$Date$year[-(1:2)])
@@ -82,15 +79,14 @@ bpool <- 1:length(datablock)
 bsamples <- replicate(B, sample(datablock, replace = T), simplify = F)
 bsamples <- sapply(bsamples, function (b) rep_len(unlist(b), n))
 
-# Compute CIs
-cl <- makeCluster(2)
+# Compute CIs. May be done without parallel computing (time-consuming)
+cl <- makeCluster(10)
 resCI <- confint(result, bsamples = bsamples, 
   applyFun = "parLapply", cl = cl)
 stopCluster(cl) 
 
-if (F) save(bsamples, bResults, jackResults, 
-  file = sprintf("%s/Bootstrap_results_1.RData", respath))
-if (F) load(sprintf("%s/Bootstrap_results_1.RData", respath))
+save(result, resCI, file = sprintf("%s/2_Bootstrap_results.RData", respath))
+load(sprintf("%s/2_Bootstrap_results.RData", respath))
 
   
 #---- Fit a GAM on classical indices
@@ -113,20 +109,21 @@ ylims <- range(c(classical_gz - 2 * classical_se,
   resCI$g$normal[,1:3,]))
 
 x11(title = "App1_results", width = 10, height = 10)
-par(mfcol = c(3, 3), mar = c(5, 0, 0, 2) + .1, oma = c(1, 5, 4, 0), 
+par(mfcol = c(3, 3), mar = c(5, 0, 0, 2) + .1, oma = c(1, 10, 4, 0), 
   cex.lab = 1.8, xpd = NA, cex.axis = 1.2)
 for (j in 1:p){
   # Alphas
-  indj <- 1:3 + (j-1) * 3
-  bp <- barplot(result$alpha[[j]], space = .1,
-    ylim = c(0,1), col = cols[1], border = NA, 
+  indj <- 1:3 + (j-1) * 3  
+  plot(0, 0, ylim = c(0,1), xaxt = "n", col = "white", xlim = c(0.5, 3.5),
     ylab = ifelse(j == 1, expression(alpha), ""),
-    names.arg = sprintf("Lag %i", 1:3),
-    yaxt = ifelse(j == 1, "s", "n"), xpd = NA)
-  arrows(x0 = bp, y0 = resCI$alpha$boot.bca[indj,1], 
-    y1 = resCI$alpha$boot.bca[indj,2], 
+    yaxt = ifelse(j == 1, "s", "n"), xpd = NA, xlab = "")
+  axis(1, at = 1:3, labels = sprintf("Lag %i", 1:3))
+  arrows(x0 = 1:3 - .2, y0 = resCI$alpha$boot.pct[indj,1], 
+    y1 = resCI$alpha$boot.pct[indj,2], 
     angle = 90, length = 0.05, lwd = 2, code = 3, xpd = T)
-  if (j < 3) points(bp, classical_alphas, pch = 21, bg = cols[2], cex = 3)
+  points(1:3 - .2, result$alpha[[j]], pch = 21, bg = cols[1], cex = 3, lwd = 1.5)
+  if (j < 3) points(1:3 + .1, classical_alphas, pch = 23, bg = cols[2], cex = 3,
+    lwd = 1.5)
   mtext(colnames(Xvars)[j], xpd = T, line = 2, cex = 1.5)
   
   # Ridge functions
@@ -148,16 +145,19 @@ for (j in 1:p){
   bp <- barplot(result$beta[j + 1], col = "cornflowerblue", 
     cex.names = 1.5, yaxt = ifelse(j == 1, "s", "n"), 
     ylab = ifelse(j == 1, expression(beta), ""),
-    ylim = c(0, max(resCI$beta$boot.bca[1:p, 2] * 1.2)), 
+    ylim = c(0, max(resCI$beta$boot.pct[1:p, 2] * 1.2)), 
     names.arg = "", xpd = NA)
-  arrows(x0 = bp, y0 = resCI$beta$boot.bca[j, 1], 
-    y1 = resCI$beta$boot.bca[j, 2], 
+  arrows(x0 = bp, y0 = resCI$beta$boot.pct[j, 1], 
+    y1 = resCI$beta$boot.pct[j, 2], 
     angle = 90, length = 0.05, lwd = 2, code = 3, xpd = T)
   
   if (j == 2) legend(par("usr")[1:2], par("usr")[3] - c(0.5, 1.5), 
-    c("CGAIM", "Classical"), col = cols, pt.bg = cols,lty = 1:2, lwd = 2, 
-    pch = c(NA, 21), bty = "n", ncol = 2, cex = 2)
+    c("CGAIM", "", "Classical", ""), pt.bg = rep(cols, each = 2), 
+    col = c(1, cols[1], 1, cols[2]), 
+    lwd = c(1, 2, 1, 2), lty = c(NA, 1, NA, 2), 
+    pch = c(21, NA, 23, NA), bty = "n", ncol = 2, cex = 1.8)
 }
 
-dev.print(png, filename = sprintf("%s/App1_Results.png", respath), res = 100, 
+dev.print(png, filename = sprintf("%s/2_Fig4.png", respath), res = 100, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
+dev.copy2eps(file = sprintf("%s/2_Fig4.eps", respath))

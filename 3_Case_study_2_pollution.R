@@ -2,26 +2,28 @@ library(splines)
 library(mgcv)
 library(devtools)
 library(scam)
-library(forecast)
 library(parallel)
+library(forecast)
 
-setwd("C:/Users/masselpl/Documents/Recherche/2017-2019 - Post-doc/Programmes/R/2 - Indices PPR/Paper--2020--CGAIM")
 
 # Should be installed from github
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
-source("Useful_functions.R")
+source("0_Useful_functions.R")
 
-respath <- "C:/Users/masselpl/Documents/Recherche/2017-2019 - Post-doc/Resultats/Part 2 - GAIM/Article V4"
+respath <- "Results"
 
 #---------------------------------------------------
 #  Data reading
 #---------------------------------------------------
 
-datatab <- read.table("Data2 - Pollution.csv", sep = ";", header = T)
+datatab <- read.table("Data/2_PollutionData.csv", sep = ";", header = T)
 
 # Compute temperature 3-day mean
 datatab$T3d <- ma(datatab$Tmean, 3)
+
+# Time variable
+datatab$Date <- as.Date(datatab$Date)
 datatab$numday <- as.numeric(datatab$Date)
 
 datatab <- na.omit(datatab)
@@ -34,8 +36,8 @@ n <- nrow(datatab)
 cgaim_res <- cgaim(MCV ~ 
   g(NO2, O3, PM2.5, bs = "mpi", constraints = list(sign.const = 1)) + 
   s(numday) + s(T3d), data = datatab,
-  alpha.control = list(norm.type = "sum"),
-  algo.control = list(keep.trace = T))
+  alpha.control = list(norm.type = "sum")
+)
 
 p <- ncol(cgaim_res$gfit)
 d <- ncol(cgaim_res$indexfit)
@@ -44,14 +46,14 @@ d <- ncol(cgaim_res$indexfit)
 #    Bootstrapping for uncertainty evaluation
 #---------------------------------------------------
 
-cl <- makeCluster(2)
-cgaim_CI <- confint(cgaim_res, B = 4, l = 7, 
+cl <- makeCluster(10)
+cgaim_CI <- confint(cgaim_res, B = B, l = 7, 
   applyFun = "parLapply", cl = cl)
 stopCluster(cl)
 
-if (F) save(cgaim_res, cgaim_CI, 
-  file = sprintf("%s/Bootstrap_results_2.RData", respath))
-if (F) load(sprintf("%s/Bootstrap_results_2.RData", respath))
+save(cgaim_res, cgaim_CI, 
+  file = sprintf("%s/3_ Bootstrap_results.RData", respath))
+load(sprintf("%s/3_ Bootstrap_results.RData", respath))
   
 #---------------------------------------------------
 #     Visualizing results
@@ -78,6 +80,6 @@ plot(cgaim_res, select = 1, xlab = "Z", ylab = "g()",
   ci = cgaim_CI, ci.args = list(col = "lightgrey")
 )
 
-dev.print(png, filename = sprintf("%s/App2_Results.png", respath), res = 60, 
+dev.print(png, filename = sprintf("%s/3_Fig5.png", respath), res = 60, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
-dev.copy2eps(file = sprintf("%s/App2_Results.eps", respath))
+dev.copy2eps(file = sprintf("%s/3_Fig5.eps", respath))
