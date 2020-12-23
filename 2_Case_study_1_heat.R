@@ -7,7 +7,6 @@
 library(splines)
 library(mgcv)
 library(devtools) # Only to install the cgaim package
-library(scam)
 library(parallel)
 
 # Should be installed from github
@@ -15,8 +14,6 @@ library(parallel)
 library(cgaim)
 
 source("0_Useful_functions.R")
-
-respath <- "Results"
 
 #---------------------------------------------------
 #  Data reading
@@ -60,17 +57,18 @@ datamod <- c(datatab[c("Death", "dos", "Year")], laggedX)
 # The gj of Tmin, Tmax and Vp are constrained to be increasing
 # The alphas are constrained to be decreasing with lag and all positive
 # The norm is the L1 to ensure that each index is a weighted average
+system.time(
 result <- cgaim(
-  Death ~ g(Tmin, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) + 
-    g(Tmax, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) +
-    g(Vp, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) +
-    s(dos) + s(Year), 
+  Death ~ g(Tmin, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) + 
+    g(Tmax, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) +
+    g(Vp, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) +
+    s(dos, s_opts = list(k = 4)) + s(Year, s_opts = list(k = 3)), 
   data = datamod, alpha.control = list(norm.type = "sum"),
-  smooth.control = list(optimizer = "efs")
-)
+  smooth.control = list(optimizer = "efs", sp = rep(0, 5))
+))
 
 #---- Confidence intervals through bootstrap
-B <- 2000
+B <- 1000
 n <- nrow(datatab) - 2
 
 # Draw bootstrap samples
@@ -80,11 +78,13 @@ bsamples <- replicate(B, sample(datablock, replace = T), simplify = F)
 bsamples <- sapply(bsamples, function (b) rep_len(unlist(b), n))
 
 # Compute CIs. May be done without parallel computing (time-consuming)
+set.seed(8)
 cl <- makeCluster(10)
 resCI <- confint(result, bsamples = bsamples, 
-  applyFun = "parLapply", cl = cl)
+  applyFun = "parLapply", cl = cl, type = "boot.pct")
 stopCluster(cl) 
 
+# Save bootstrap results to gain time
 save(result, resCI, file = sprintf("%s/2_Bootstrap_results.RData", respath))
 load(sprintf("%s/2_Bootstrap_results.RData", respath))
 
@@ -118,8 +118,8 @@ for (j in 1:p){
     ylab = ifelse(j == 1, expression(alpha), ""),
     yaxt = ifelse(j == 1, "s", "n"), xpd = NA, xlab = "")
   axis(1, at = 1:3, labels = sprintf("Lag %i", 1:3))
-  arrows(x0 = 1:3 - .2, y0 = resCI$alpha$boot.pct[indj,1], 
-    y1 = resCI$alpha$boot.pct[indj,2], 
+  arrows(x0 = 1:3 - .2, y0 = resCI$alpha$boot.bca[indj,1], 
+    y1 = resCI$alpha$boot.bca[indj,2], 
     angle = 90, length = 0.05, lwd = 2, code = 3, xpd = T)
   points(1:3 - .2, result$alpha[[j]], pch = 21, bg = cols[1], cex = 3, lwd = 1.5)
   if (j < 3) points(1:3 + .1, classical_alphas, pch = 23, bg = cols[2], cex = 3,
@@ -147,8 +147,8 @@ for (j in 1:p){
     ylab = ifelse(j == 1, expression(beta), ""),
     ylim = c(0, max(resCI$beta$boot.pct[1:p, 2] * 1.2)), 
     names.arg = "", xpd = NA)
-  arrows(x0 = bp, y0 = resCI$beta$boot.pct[j, 1], 
-    y1 = resCI$beta$boot.pct[j, 2], 
+  arrows(x0 = bp, y0 = resCI$beta$boot.bca[j, 1], 
+    y1 = resCI$beta$boot.bca[j, 2], 
     angle = 90, length = 0.05, lwd = 2, code = 3, xpd = T)
   
   if (j == 2) legend(par("usr")[1:2], par("usr")[3] - c(0.5, 1.5), 
@@ -158,6 +158,6 @@ for (j in 1:p){
     pch = c(21, NA, 23, NA), bty = "n", ncol = 2, cex = 1.8)
 }
 
-dev.print(png, filename = sprintf("%s/2_Fig4.png", respath), res = 100, 
+dev.print(png, filename = "Results/Figure4.png", res = 200, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
-dev.copy2eps(file = sprintf("%s/2_Fig4.eps", respath))
+# dev.print(pdf, file = "Results/Figure4.pdf")

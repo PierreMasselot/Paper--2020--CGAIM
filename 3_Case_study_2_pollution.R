@@ -1,7 +1,6 @@
 library(splines)
 library(mgcv)
 library(devtools)
-library(scam)
 library(parallel)
 library(forecast)
 
@@ -10,8 +9,6 @@ library(forecast)
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
 source("0_Useful_functions.R")
-
-respath <- "Results"
 
 #---------------------------------------------------
 #  Data reading
@@ -24,6 +21,8 @@ datatab$T3d <- ma(datatab$Tmean, 3)
 
 # Time variable
 datatab$Date <- as.Date(datatab$Date)
+datatab$dos <- as.numeric(format(datatab$Date, "%j"))
+datatab$year <- as.numeric(format(datatab$Date, "%Y"))
 datatab$numday <- as.numeric(datatab$Date)
 
 datatab <- na.omit(datatab)
@@ -34,9 +33,11 @@ n <- nrow(datatab)
 #---------------------------------------------------
 
 cgaim_res <- cgaim(MCV ~ 
-  g(NO2, O3, PM2.5, bs = "mpi", constraints = list(sign.const = 1)) + 
-  s(numday) + s(T3d), data = datatab,
-  alpha.control = list(norm.type = "sum")
+    g(NO2, O3, PM2.5, fcons = "inc", acons = list(sign.const = 1),
+      s_opts = list(k = 10), label = "Pol") + 
+    s(dos, s_opts = list(k = 7)) + s(year, s_opts = list(k = 3)),
+  data = datatab, alpha.control = list(norm.type = "sum"), 
+  smooth.control = list(optimizer = "efs", sp = rep(0, 3))
 )
 
 p <- ncol(cgaim_res$gfit)
@@ -46,6 +47,9 @@ d <- ncol(cgaim_res$indexfit)
 #    Bootstrapping for uncertainty evaluation
 #---------------------------------------------------
 
+B <- 1000
+
+set.seed(8)
 cl <- makeCluster(10)
 cgaim_CI <- confint(cgaim_res, B = B, l = 7, 
   applyFun = "parLapply", cl = cl)
@@ -80,6 +84,6 @@ plot(cgaim_res, select = 1, xlab = "Z", ylab = "g()",
   ci = cgaim_CI, ci.args = list(col = "lightgrey")
 )
 
-dev.print(png, filename = sprintf("%s/3_Fig5.png", respath), res = 60, 
+dev.print(png, filename = "Results/Figure5.png", res = 200, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
-dev.copy2eps(file = sprintf("%s/3_Fig5.eps", respath))
+# dev.print(pdf, file = "Results/Figure5.pdf")

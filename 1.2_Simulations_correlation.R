@@ -82,10 +82,11 @@ for (k in 1:nc){
   # Apply model
   results <- parLapply(cl, dat_cor[[k]]$Y, function(y){
     dat <- c(list(y = y), dat_cor[[k]]$X)
-    cgaim(y ~ g(X1, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) + 
-        g(X2, bs = "mpi", constraints = list(monotone = 1, sign.const = 1)) + 
-        g(X3, bs = "cx", constraints = list(sign.const = 1)),
-      data = dat, alpha.control = list(norm.type = "sum"))
+    cgaim(y ~ g(X1, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) + 
+        g(X2, fcons = "inc", acons = list(monotone = 1, sign.const = 1)) + 
+        g(X3, fcons = "cvx", acons = list(sign.const = 1)),
+      data = dat, alpha.control = list(norm.type = "sum"),
+      smooth.control = list(sp = rep(0, 3)))
   })
   time_cor[[2]][k] <- Sys.time() - deb
   # Estimated alphas and functions
@@ -100,10 +101,11 @@ for (k in 1:nc){
   deb <- Sys.time()
   results <- parLapply(cl, dat_cor[[k]]$Y, function(y){
     dat <- c(list(y = y), dat_cor[[k]]$X)
-    cgaim(y ~ g(X1, bs = "mpi", constraints = list(sign.const = 1)) + 
-        g(X2, bs = "mpi", constraints = list(monotone = -1, sign.const = 1)) + 
-        g(X3, bs = "cx", constraints = list(monotone = 1, sign.const = 1)),
-      data = dat, alpha.control = list(norm.type = "sum"))
+    cgaim(y ~ g(X1, fcons = "inc", acons = list(sign.const = 1)) + 
+        g(X2, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) + 
+        g(X3, fcons = "cvx", acons = list(monotone = 1, sign.const = 1)),
+      data = dat, alpha.control = list(norm.type = "sum"),
+      smooth.control = list(sp = rep(0, 3)))
   })
   time_cor[[3]][k] <- Sys.time() - deb
   # Estimated alphas and functions
@@ -245,7 +247,7 @@ plot.new()
 legend("center", mod_names, col = mod_pal, lwd = 2, lty = mod_lty, 
   ncol = nmod, cex = 1.5, pch = mod_pch)
   
-dev.print(png, filename = "Results/1.2_Fig3.png", res = 100, 
+dev.print(png, filename = "Results/Figure3.png", res = 200, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
-dev.copy2eps(file = "Results/1.2_Fig3.eps")
+# dev.print(pdf, file = "Results/Figure3.pdf")
 
