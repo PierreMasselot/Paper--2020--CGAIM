@@ -57,7 +57,6 @@ datamod <- c(datatab[c("Death", "dos", "Year")], laggedX)
 # The gj of Tmin, Tmax and Vp are constrained to be increasing
 # The alphas are constrained to be decreasing with lag and all positive
 # The norm is the L1 to ensure that each index is a weighted average
-system.time(
 result <- cgaim(
   Death ~ g(Tmin, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) + 
     g(Tmax, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) +
@@ -65,7 +64,7 @@ result <- cgaim(
     s(dos, s_opts = list(k = 4)) + s(Year, s_opts = list(k = 3)), 
   data = datamod, alpha.control = list(norm.type = "sum"),
   smooth.control = list(optimizer = "efs", sp = rep(0, 5))
-))
+)
 
 #---- Confidence intervals through bootstrap
 B <- 1000

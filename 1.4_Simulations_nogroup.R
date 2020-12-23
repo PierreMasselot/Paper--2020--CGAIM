@@ -1,7 +1,7 @@
 ###############################################################################
 #
 #                          Simulation study
-#                       Correlation variation
+#                       No group structure
 #
 ###############################################################################
 
@@ -15,6 +15,8 @@ library(sfsmisc)
 library(cgaim)
 source("0_Useful_functions.R")
 source("1.0_Benchmark_models.R")
+# source("1.0_Simulation_functions.R")
+# source("1.0_Parameters.R")
 
 #-------------------------------------------
 #     Parameters
@@ -35,17 +37,14 @@ Gfuns <- c(
     a1 * exp(-b1 * scale(z)) + a2 * exp(b2 * scale(z))
 )
 
-# Sample size
-n <- 1000
+# Tested sample sizes
+nvec <- c(50, 100, 200, 500, 1000)
 
 # Number of simulations
 ns <- 5
 
-# Tested correlations
-rhovec <- seq(0.25, 0.75, by = 0.25)
-
 #----- Derived objects -----
-nr <- length(rhovec)
+nn <- length(nvec)
 p <- length(Alpha)
 pvec <- sapply(Alpha, length)
 ptot <- sum(pvec)
@@ -66,33 +65,27 @@ clusterEvalQ(cl, {
 })
 
 # Save results
-time_samp <- rep(list(vector("numeric", nr)), 4)
-g_samp <- rep(list(vector("list", nr)), 4)
-z_samp <- rep(list(vector("list", nr)), 4)
-alpha_samp <- rep(list(vector("list", nr)), 4)
-yhat_samp <- rep(list(vector("list", nr)), 4)
+time_samp <- rep(list(vector("numeric", nn)), 4)
+g_samp <- rep(list(vector("list", nn)), 4)
+z_samp <- rep(list(vector("list", nn)), 4)
+alpha_samp <- rep(list(vector("list", nn)), 4)
+yhat_samp <- rep(list(vector("list", nn)), 4)
 
 # Loop over simulation designs
-for (k in 1:nr){
+for (k in 1:nn){
   print(k); flush.console()
   
-  #----- Generate data
-  Sigma <- lapply(pvec, function(p){
-    sig <- matrix(rhovec[k], nrow = p, ncol = p)
-    diag(sig) <- 1
-    sig
-  })
-  X <- Map(MASS::mvrnorm, n = n, mu = lapply(pvec, rep, x = 0), 
-    Sigma = Sigma)
+  #----- Generate data  
+  X <- Map(MASS::mvrnorm, n = nvec[k], mu = lapply(pvec, rep, x = 0), 
+    Sigma = lapply(pvec, diag))
   names(X) <- sprintf("X%i", 1:p)
   Xall <- Reduce(cbind, X) # Useful for PPR
-  Z <- Map("%*%", X, Alpha)
-  G <- mapply(function(g, z) do.call(g, list(z = z)), Gfuns, Z)
-  Y <- 5 + rowSums(scale(G))
-  Ysim <- replicate(ns, Y + rnorm(n, 0, .2), simplify = F)
+  Z <- mapply("%*%", X, Alpha)
+  Y <- 5 + exp(rowSums(Z))
+  Ysim <- replicate(ns, Y + rnorm(nvec[k], 0, .2), simplify = F)
   
   # Transfer objects in cluster
-  clusterExport(cl, c("Ysim", "X", "Xall", "k", "n"))
+  clusterExport(cl, c("Ysim", "X", "Xall", "k", "nvec"))
   
   #---- CGAIM models
   ## Unconstrained GAIM
@@ -121,7 +114,7 @@ for (k in 1:nr){
     dat <- c(list(y = y), X)
     cgaim(y ~ g(X1, fcons = "inc", acons = list(monotone = -1, sign.const = 1)) + 
         g(X2, fcons = "inc", acons = list(monotone = 1, sign.const = 1)) + 
-        g(X3, fcons = "cvx", acons = list(sign.const = 1)),
+        g(X3, fcons = "inc", acons = list(sign.const = 1)),
       data = dat, alpha.control = list(norm.type = "sum"),
       smooth.control = list(sp = rep(0, 3)))
   })
@@ -141,7 +134,7 @@ for (k in 1:nr){
     res <- ppr(y = y, x = Xall, nterms = p)  # PPR fitting
     alpha <- Map("[", as.data.frame(res$alpha), split(seq_len(ptot), rep(1:p, pvec)))  # Alphas
     alpha <- Map(cgaim:::normalize, alpha, "sum")
-    n <- n
+    n <- nvec[k]
     jf <- 7 + res$smod[1] * (sum(pvec) + 1) # Index for gz
     gz <- matrix(res$smod[jf + 1L:(p * n)], n, p) # gz
     jt <- jf + res$smod[1] * n  # Index for z
@@ -175,97 +168,5 @@ for (k in 1:nr){
 stopCluster(cl)
 
 #---- Save Results
-save(rhovec, time_samp, g_samp, alpha_samp, z_samp, yhat_samp, 
-  file = "Results/1.2_Simulations_correlation.RData")
-
-
-#-------------------------------------------
-#     Plots
-#-------------------------------------------
-
-load("Results/1.2_Simulations_correlation.RData")
-
-### MSE and MISE plot
-
-# Functions error (MISE)
-trueGs <- lapply(dat_cor, "[[", "G")
-trueZs <- lapply(dat_cor, function(x){
-  mapply("%*%", x$X, Alpha)
-})
-
-ISEs <- array(NA, dim = c(nc, p, nmod, ns))
-for (e in 1:nc){
-  for (j in 1:p){
-    trueFunc <- splinefun(trueZs[[e]][,j], trueGs[[e]][,j])
-    trueEval <- trueFunc(seq(min(trueZs[[e]][,j]), max(trueZs[[e]][,j]), 
-      length.out = 1000))
-    for (m in 1:nmod){
-      modFunc <- Map(function(z, g){
-          if (all(is.na(g))){
-            out <- rep(NA, 1000)
-          } else{
-            out <- splinefun(z, g)(seq(min(z), max(z), length.out = 1000))
-          }
-          return(out)
-        }, 
-        as.data.frame(z_cor[[m]][[e]][,j,]),
-        as.data.frame(g_cor[[m]][[e]][,j,]))
-      # Integrate the difference by trapezoid approximation
-      ISEs[e,j,m,] <- mapply(function(z, g){
-          ifelse(all(is.na(g)) || all(g == 0), NA, 
-            integrate.xy(seq(min(z), max(z), length.out = 1000), 
-              (g - trueEval)^2))
-        }, as.data.frame(z_cor[[m]][[e]][,j,]), modFunc) 
-    }
-  }
-}
-MISEs <- apply(ISEs, 1:3, mean, na.rm = T)
-
-
-# Alpha errors
-true_alphas <- unlist(Alpha)
-
-# Compute RMSEs for each alpha
-alpha_errors <- lapply(alpha_cor, lapply, apply, 2, "-", true_alphas)
-alpha_mses <- lapply(alpha_errors, sapply, apply, 1, 
-  function(x) sqrt(sum(x^2, na.rm = T)))
-
-alpha_mse_ses <- Map(function(er, mse){
-  mapply(function(er1, mse1){
-    vars <- apply(er1, 2, function(x) x^2 - mse1)
-    rowSums(vars) / (ns * (ns - 1))
-  }, er, as.data.frame(mse))
-}, alpha_errors, alpha_mses)
-
-alpha_mses_byZ <- lapply(alpha_mses, aggregate, by = list(Group = pind), mean)
-error_rg <- range(sapply(alpha_mses, function(x) range(x[,-1])))
-
-# plot
-x11(height = 10, width = 15)
-layout(rbind(matrix(1:(2*p), nrow = 2), (2*p) + 1), 
-  heights = c(.45, .45, .1))
-for (j in 1:p){
-  group_errors <- sapply(alpha_mses_byZ, "[", j, -1)
-  matplot(corvec, group_errors, type = "b", lwd = 3,
-    col = mod_pal, pch = mod_pch, log = "y", xlab = "Correlation coefficient",
-    main = bquote(.(letters[j]) * ") Group" ~ .(j) * ":" ~ italic(alpha)),
-      #paste0(letters[j], ") Group ", j, expression(alpha)),
-    ylim = error_rg, 
-    ylab = ifelse(j == 1, "MSE", ""), cex.lab = 1.5, cex.axis = 1.3, 
-    cex.main = 2, cex = 1.5, lty = mod_lty)
-  matplot(corvec, MISEs[,j,], type = "b", lwd = 3,
-    col = mod_pal, pch = mod_pch, log = "y", xlab = "Correlation coefficient",
-    main = bquote(.(letters[p + j]) * ") Group" ~ .(j) * ":" ~ italic(g)), 
-    ylim = range(MISEs), 
-    ylab = ifelse(j == 1, "MISE", ""), cex.lab = 1.5, cex.axis = 1.3, 
-    cex.main = 2, cex = 1.5, lty = mod_lty)
-}
-par(mar = rep(0,4))
-plot.new()
-legend("center", mod_names, col = mod_pal, lwd = 2, lty = mod_lty, 
-  ncol = nmod, cex = 1.5, pch = mod_pch)
-  
-dev.print(png, filename = "Results/Figure3.png", res = 200, 
-  width = dev.size()[1], height = dev.size()[2], units = "in")
-# dev.print(pdf, file = "Results/Figure3.pdf")
-
+save(nvec, time_samp, g_samp, alpha_samp, z_samp, yhat_samp, 
+  file = "Results/1.4_Simulations_nogroup.RData")
