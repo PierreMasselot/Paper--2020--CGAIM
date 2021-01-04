@@ -49,21 +49,19 @@ d <- ncol(cgaim_res$indexfit)
 
 B <- 1000
 
-set.seed(8)
-cl <- makeCluster(10)
+cl <- makeCluster(6)
 cgaim_CI <- confint(cgaim_res, B = B, l = 7, 
   applyFun = "parLapply", cl = cl)
 stopCluster(cl)
 
-save(cgaim_res, cgaim_CI, 
-  file = sprintf("%s/3_ Bootstrap_results.RData", respath))
-load(sprintf("%s/3_ Bootstrap_results.RData", respath))
+save(cgaim_res, cgaim_CI, file = "Results/3_ Bootstrap_results.RData")
+load("Results/3_Bootstrap_results.RData")
   
 #---------------------------------------------------
 #     Visualizing results
 #---------------------------------------------------
 
-bca_cgaim <- cgaim_CI$alpha$boot.bca
+pct_cgaim <- cgaim_CI$alpha$boot.pct
 
 x11(width = 10, height = 5)
 par(mfrow = c(1,2), cex.lab = 1.3, cex.axis = 1.2)
@@ -73,7 +71,7 @@ plot(cgaim_res$alpha[[1]], ylim = c(0,1), col = "white",
   main = bquote("a) Index weights" ~ italic(alpha)))
 axis(1, at = 1:p, 
   labels = c(expression(NO[2]), expression(O[3]), expression(PM[2.5])))
-arrows(x0 = 1:p, y0 = bca_cgaim[,1], y1 = bca_cgaim[,2],
+arrows(x0 = 1:p, y0 = pct_cgaim[,1], y1 = pct_cgaim[,2],
   angle = 90, length = 0.05, lwd = 2, code = 3, col = "darkgrey")
 points(1:p, cgaim_res$alpha[[1]], col = "darkgrey", pch = 21, cex = 2, 
   bg = "cornflowerblue")
@@ -83,7 +81,8 @@ plot(cgaim_res, select = 1, xlab = "Z", ylab = "g()",
   main = bquote("b) Function" ~ italic(g())),
   ci = cgaim_CI, ci.args = list(col = "lightgrey")
 )
+abline(h = 0)
 
-dev.print(png, filename = "Results/Figure5.png", res = 200, 
+dev.print(png, filename = "Results/Figure3.png", res = 200, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
 # dev.print(pdf, file = "Results/Figure5.pdf")

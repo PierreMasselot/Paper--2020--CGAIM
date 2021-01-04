@@ -15,8 +15,6 @@ library(sfsmisc)
 library(cgaim)
 source("0_Useful_functions.R")
 source("1.0_Benchmark_models.R")
-# source("1.0_Simulation_functions.R")
-# source("1.0_Parameters.R")
 
 #-------------------------------------------
 #     Parameters
@@ -29,19 +27,11 @@ Alpha <- list(
   c(.2, .4, .3, .1)
 )
 
-# True ridge functions G
-Gfuns <- c(
-  function(z, lambda = 1) exp(lambda * scale(z)), 
-  function(z, lambda = 5) 1 / (1 + exp(-lambda * scale(z))), 
-  function(z, a1 = 50, a2 = .8, b1 = .5, b2 = 2.3) 
-    a1 * exp(-b1 * scale(z)) + a2 * exp(b2 * scale(z))
-)
-
 # Tested sample sizes
 nvec <- c(50, 100, 200, 500, 1000)
 
 # Number of simulations
-ns <- 5
+ns <- 1000
 
 #----- Derived objects -----
 nn <- length(nvec)
@@ -54,7 +44,7 @@ ptot <- sum(pvec)
 #-------------------------------------------
 
 # Initialize cluster for parallel computation
-cl <- makeCluster(2)
+cl <- makeCluster(6)
 # Transfer objects in cluster
 clusterExport(cl, ls())
 clusterEvalQ(cl, {

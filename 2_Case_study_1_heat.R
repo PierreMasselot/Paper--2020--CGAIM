@@ -77,15 +77,14 @@ bsamples <- replicate(B, sample(datablock, replace = T), simplify = F)
 bsamples <- sapply(bsamples, function (b) rep_len(unlist(b), n))
 
 # Compute CIs. May be done without parallel computing (time-consuming)
-set.seed(8)
-cl <- makeCluster(10)
+cl <- makeCluster(6)
 resCI <- confint(result, bsamples = bsamples, 
   applyFun = "parLapply", cl = cl, type = "boot.pct")
 stopCluster(cl) 
 
 # Save bootstrap results to gain time
-save(result, resCI, file = sprintf("%s/2_Bootstrap_results.RData", respath))
-load(sprintf("%s/2_Bootstrap_results.RData", respath))
+save(result, resCI, file = "Results/2_Bootstrap_results.RData")
+load("Results/2_Bootstrap_results.RData")
 
   
 #---- Fit a GAM on classical indices
@@ -103,13 +102,14 @@ classical_indices <- na.omit(classical_indices)
 #---- Plot results
 cols <- c("cornflowerblue", "indianred")
 
-ylims <- range(c(classical_gz - 2 * classical_se, 
-  classical_gz + 2 * classical_se, 
-  resCI$g$normal[,1:3,]))
+# ylims <- range(c(classical_gz - 2 * classical_se, 
+#   classical_gz + 2 * classical_se, 
+#   resCI$g$boot.pct$g[,1:3,]))
+ylims <- c(-10, 30)
 
 x11(title = "App1_results", width = 10, height = 10)
 par(mfcol = c(3, 3), mar = c(5, 0, 0, 2) + .1, oma = c(1, 10, 4, 0), 
-  cex.lab = 1.8, xpd = NA, cex.axis = 1.2)
+  cex.lab = 1.8, cex.axis = 1.2)
 for (j in 1:p){
   # Alphas
   indj <- 1:3 + (j-1) * 3  
@@ -117,8 +117,8 @@ for (j in 1:p){
     ylab = ifelse(j == 1, expression(alpha), ""),
     yaxt = ifelse(j == 1, "s", "n"), xpd = NA, xlab = "")
   axis(1, at = 1:3, labels = sprintf("Lag %i", 1:3))
-  arrows(x0 = 1:3 - .2, y0 = resCI$alpha$boot.bca[indj,1], 
-    y1 = resCI$alpha$boot.bca[indj,2], 
+  arrows(x0 = 1:3 - .2, y0 = resCI$alpha$boot.pct[indj,1], 
+    y1 = resCI$alpha$boot.pct[indj,2], 
     angle = 90, length = 0.05, lwd = 2, code = 3, xpd = T)
   points(1:3 - .2, result$alpha[[j]], pch = 21, bg = cols[1], cex = 3, lwd = 1.5)
   if (j < 3) points(1:3 + .1, classical_alphas, pch = 23, bg = cols[2], cex = 3,
@@ -138,7 +138,8 @@ for (j in 1:p){
       c(classical_gz[czord,j] + 2 * classical_se[czord,j], 
         rev(classical_gz[czord,j] - 2 * classical_se[czord,j])),
       col = transparency(cols[2], 0.8), border = NA)       
-  } 
+  }
+  abline(h = 0)
   
   # Magnitudes beta
   bp <- barplot(result$beta[j + 1], col = "cornflowerblue", 
@@ -146,8 +147,8 @@ for (j in 1:p){
     ylab = ifelse(j == 1, expression(beta), ""),
     ylim = c(0, max(resCI$beta$boot.pct[1:p, 2] * 1.2)), 
     names.arg = "", xpd = NA)
-  arrows(x0 = bp, y0 = resCI$beta$boot.bca[j, 1], 
-    y1 = resCI$beta$boot.bca[j, 2], 
+  arrows(x0 = bp, y0 = resCI$beta$boot.pct[j, 1], 
+    y1 = resCI$beta$boot.pct[j, 2], 
     angle = 90, length = 0.05, lwd = 2, code = 3, xpd = T)
   
   if (j == 2) legend(par("usr")[1:2], par("usr")[3] - c(0.5, 1.5), 
@@ -157,6 +158,6 @@ for (j in 1:p){
     pch = c(21, NA, 23, NA), bty = "n", ncol = 2, cex = 1.8)
 }
 
-dev.print(png, filename = "Results/Figure4.png", res = 200, 
+dev.print(png, filename = "Results/Figure2.png", res = 200, 
   width = dev.size()[1], height = dev.size()[2], units = "in")
 # dev.print(pdf, file = "Results/Figure4.pdf")
