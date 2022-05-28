@@ -50,6 +50,8 @@ r2 <- 3
 #     Exposome generation
 #-------------------------------------------
 
+set.seed(4)
+
 # Reorder correlation matrix according to groups
 corrmat <- corrmat[unlist(groups), unlist(groups)]
 
@@ -67,6 +69,33 @@ colnames(Xall) <- colnames(corrmat)
 X <- tapply(1:ptot, grpinds, function(i) Xall[,i])
 names(X) <- names(groups)
 
+# Generate alphas
+alphasim <- lapply(nnn, function(nn) replicate(ns, {
+  indsim <- sapply(split(1:ptot, grpinds), sample, size = 1)
+  indexcl <- sapply(split((1:ptot)[-indsim], grpinds[-indsim]), 
+    sample, size = 1)
+  indsim <- c(indsim, sample((1:ptot)[-c(indsim, indexcl)], nn - p))
+  alphas <- rep(0, ptot)
+  alphas[indsim] <- sample(c(-1, 1), nn, replace = T)
+  alphas
+}))
+
+#----- Generate outcomes
+Ysim <- lapply(seq_along(alphasim), function(a){
+  # Generate linear predictor
+  linpred <- Xall %*% alphasim[[a]]
+  
+  # Determine noise for each iteration
+  r2a <- nnn[a] * r2
+  sig2 <- apply(linpred, 2, var) * r2a / (100 - r2a)
+  
+  # Generate noise
+  epsilon <- mvrnorm(n, rep(0, ns), diag(sig2))
+  
+  # Final generated response
+  linpred + epsilon
+})
+
 #-------------------------------------------
 #     Simulations
 #-------------------------------------------
@@ -76,132 +105,99 @@ cl <- makeCluster(max(1, detectCores() - 2))
 registerDoParallel(cl)
 
 # To trace simulations
-writeLines(c(""), "temp/logsim5.txt")
-cat(as.character(as.POSIXct(Sys.time())), file = "temp/logsim5.txt", 
+writeLines(c(""), "temp/logsim4.txt")
+cat(as.character(as.POSIXct(Sys.time())), file = "temp/logsim4.txt", 
   append = T)
 
-results <- alphasim <- vector("list", length(nnn))
+# Packages
+packs <- c("cgaim", "Matrix", "glmnet")
 
-# Loop over simulation designs
-for (k in seq_along(nnn)){
+#----- Apply CGAIM on each simulation
+results <- foreach(k = seq_along(nnn), .packages = packs, .combine = rbind) %:% 
+  foreach(i = seq_len(ns), .packages = packs, .combine = rbind) %dopar% 
+{
   
-  cat("\n", "scenario = ", k, "\n",
-    file = "temp/logsim5.txt", append = T)
+  if(i %% 20 == 0) cat("\n", "scenario =", k, "iter = ", i, 
+    as.character(Sys.time()), "\n", file = "temp/logsim4.txt", append = T)
   
-  set.seed(555 + k)
+  # Data preparation
+  dat <- c(list(y = Ysim[[k]][,i]), X)
+  alpha_est <- list()
   
-  #----- Generate response  
+  # Number of positive alphas in each group
+  npos <- tapply(alphasim[[k]][,i], grpinds, function(x) sum(x != 0))
   
-  # Generate non-null alphas for each iteration
-  alphasim[[k]] <- replicate(ns, {
-    indsim <- sapply(split(1:ptot, grpinds), sample, size = 1)
-    indsim <- c(indsim, sample((1:ptot)[-indsim], nnn[k] - p))
-    alphas <- rep(0, ptot)
-    alphas[indsim] <- 1
-    alphas
-  })
+  # Apply GAIM
+  formula <- sprintf("y ~ %s", 
+    paste(sprintf("g(%s)", 
+      names(groups)), collapse = " + "))
+  res <- cgaim(as.formula(formula), data = dat,
+    smooth_control = list(sp = rep(0, p)))
+  alpha_est$GAIM <- unlist(mapply("*", res$alpha, npos))
   
-  # Generate linear predictor
-  linpred <- Xall %*% alphasim[[k]]
+  # Apply CGAIM
+  formula <- sprintf("y ~ %s", paste(sprintf("g(%s, fcons = '%s')", 
+    names(groups), c("cvx", "inc", "inc", "inc", "inc")), 
+    collapse = " + "))
+  res <- cgaim(as.formula(formula), data = dat, 
+    alpha_control = list(Cmat = rbind(diag(ptot), -diag(ptot)),
+      bvec = rep(rep(-1/npos, pvec), 2)), 
+    smooth_control = list(sp = rep(0, p)))
+  # To correct for numerical errors in OSQP/quadprog
+  alpha_est$CGAIM <- pmin(pmax(unlist(mapply("*", res$alpha, npos)), -1), 1)
   
-  # Determine noise for each iteration
-  sig2 <- apply(linpred, 2, var) * r2 / (100 - r2)
-  
-  # Generate noise
-  epsilon <- mvrnorm(n, rep(0, ns), diag(sig2))
-  
-  # Final generated response
-  Ysim <- linpred + epsilon
-  
-  #----- Apply CGAIM on each simulation
-  results[[k]] <- foreach(i = iter(seq_len(ns)),
-    .packages = c("cgaim", "Matrix", "glmnet"), 
-    .combine = abind) %dopar% 
-  {
-    
-    # Data preparation
-    dat <- c(list(y = Ysim[,i]), X)
-    alpha_est <- list()
-    
-    # Number of positive alphas in each group
-    npos <- tapply(alphasim[[k]][,i], grpinds, sum)
-    
-    # Apply GAIM
-    formula <- sprintf("y ~ %s", 
-      paste(sprintf("g(%s)", 
-        names(groups)), collapse = " + "))
-    res <- cgaim(as.formula(formula), data = dat,
-      smooth_control = list(sp = rep(0, p)))
-    alpha_est$GAIM <- unlist(mapply("*", res$alpha, npos))
-    
-    # Apply CGAIM
-    formula <- sprintf("y ~ %s", paste(sprintf("g(%s, fcons = '%s')", 
-      names(groups), c("cvx", "inc", "inc", "inc", "inc")), 
-      collapse = " + "))
-    res <- cgaim(as.formula(formula), data = dat, 
-      alpha_control = list(Cmat = diag(ptot)), 
-      smooth_control = list(sp = rep(0, p)))
-    alpha_est$CGAIM <- unlist(mapply("*", res$alpha, npos))
-    
-    # Apply Elastic net
-    # res <- cv.glmnet(Xall, Ysim[,i], relax = T)
-    # alpha_est$ENET <- as.matrix(coef(res, s = "lambda.1se")[-1])
-    
-    # Apply GMAVE
-    # res <- gmave(Ysim[,i], X, alpha.control = list(norm.type = "L1"))
-    # alpha_est$GMAVE <- mapply("*", split(res, rep(1:p, pvec)), npos)
-    
-    # Trace iteration 
-    if(i %% 20 == 0) cat("\n", "iter = ", i, as.character(Sys.time()), "\n",
-      file = "temp/logsim5.txt", append = T)
-    
-    # Reorganize into a matrix and return
-    array(unlist(alpha_est), dim = c(ptot, length(alpha_est), 1), 
-      dimnames = list(NULL, names(alpha_est), NULL))
-  }
+  # Reorganize into a data.frame and return
+  data.frame(nnn = nnn[k], simu = i, model = rep(names(alpha_est), each = ptot),
+    alpha = rep(1:ptot, length(alpha_est)), est = unlist(alpha_est), 
+    true = rep(alphasim[[k]][,i], length(alpha_est)))
 }
 
+# Stop parallel
 stopCluster(cl)
 
 #---- Save Results
 save(results, alphasim,
-  file = "Results/1.5_Exposome.RData")
+  file = "Results/1.4_Exposome.RData")
 
 #-------------------------------------------
 #    Result summary
 #-------------------------------------------
 
 # Models applied
-method_list <- dimnames(results[[1]])[[2]]
+method_list <- unique(results$model)
 nm <- length(method_list)
 
-# Data.frame with estimated alphas
-alphadf <- expand.grid(var = 1:ptot, sim = 1:ns, method = method_list, 
-  nonnull = nnn)
-alphadf$alpha <- c(sapply(results, function(x) c(aperm(x, c(1, 3:2)))))
-alphadf$true <- c(sapply(alphasim, rep, nm))
-
-#----- Plot all alphas
-
 # Compute mean and confidence intervals
-ovmean <- aggregate(alpha ~ method + true + nonnull, alphadf, mean)
+ovmean <- aggregate(est ~ model + true + nnn, results, mean)
 names(ovmean)[4] <- "mean"
-ovlow <- aggregate(alpha ~ method + true + nonnull, alphadf, quantile, .025)
+ovlow <- aggregate(est ~ model + true + nnn, results, quantile, .025)
 names(ovlow)[4] <- "low"
-ovhigh <- aggregate(alpha ~ method + true + nonnull, alphadf, quantile, .975)
+ovhigh <- aggregate(est ~ model + true + nnn, results, quantile, .975)
 names(ovhigh)[4] <- "high"
 
 # Put together in data.frame
 ovres <- Reduce(merge, list(ovmean, ovlow, ovhigh))
 
+#----- Plot all alphas
+
+# Method list
+method_list <- unique(results$model)
+nm <- length(method_list)
+
+# Palette for models
+pal <- tail(brewer.pal(pmax(nm, 3), "Blues"), nm)
+names(pal) <- method_list
+
 # Plot
-ggplot(ovres, aes(x = nonnull, group = method, col = method)) + 
+ggplot(ovres, aes(x = nnn, group = interaction(true, model), col = model)) + 
   theme_classic() + 
-  geom_pointrange(aes(y = mean, ymin = low, ymax = high), 
-    position = position_dodge(width = 2), size = .9) +
+  geom_hline(yintercept = c(-1, 0, 1), linetype = 2) + 
+  geom_errorbar(aes(ymin = low, ymax = high), width = 1, size = .5,
+    position = position_dodge(width = 1)) +
+  geom_point(aes(y = mean), position = position_dodge(width = 1), 
+    size = 3) +
   scale_x_continuous(name = "Number of true predictors", breaks = nnn) + 
   scale_y_continuous(name = "Estimated", n.breaks = 6) + 
-  scale_color_manual(name = "", values = brewer.pal(3, "Blues")[-1]) + 
-  geom_hline(yintercept = c(0, 1), linetype = 2)
+  scale_color_manual(name = "", values = pal)
 
-ggsave("Figures/Figure3.pdf")
+ggsave("Figures/Figure4.pdf")

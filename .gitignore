@@ -16,6 +16,7 @@
 
 # RStudio files
 .Rproj.user/
+*.Rproj
 
 # produced vignettes
 vignettes/*.html
@@ -36,8 +37,11 @@ vignettes/*.pdf
 rsconnect/
 
 # Figures and results
+*.pdf
 *.png
 *.jpg
 *.eps
 *.tiff
 *.RData
+*.csv
+temp/*
