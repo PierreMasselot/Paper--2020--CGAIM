@@ -1,28 +1,34 @@
-###############################################################################
+################################################################################
 #
-#                          Simulation study
-#                       Sample size variation
+#  R code for the simulation study of 
 #
-###############################################################################
+#   Masselot et al., 2022
+#   Constrained groupwise additive index models
+#   Biostatistics
+#
+#   Section 4.4 Exposome
+#
+#   Author: Pierre Masselot
+#
+################################################################################
 
-library(foreach)
-library(doParallel)
-library(MASS)
-library(Matrix)
-library(sfsmisc)
-library(scar)
-library(ggplot2)
-library(abind)
-library(RColorBrewer)
+#-------------------------------------------
+# Packages
+#-------------------------------------------
 
+#----- Used packages
+library(doParallel) # Parallel computing
+library(MASS) # For multivariate normal generation
+library(ggplot2) # Plotting
+library(patchwork) # Assemble ggplots
+library(RColorBrewer) # Colorpalette Blues
 
+#----- cgaim package
 # Should be installed from github
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
-source("0_Useful_functions.R")
-source("1.0_Benchmark_models.R")
 
-# Load correlation matrix (Robinson et al. 2018)
+#----- Load correlation matrix (Robinson et al. 2018)
 corrmat <- data.matrix(read.table("Data/1.4_ExposomeCorrelation.csv", 
   sep = ","))
 
@@ -69,12 +75,17 @@ colnames(Xall) <- colnames(corrmat)
 X <- tapply(1:ptot, grpinds, function(i) Xall[,i])
 names(X) <- names(groups)
 
-# Generate alphas
+#----- Generate alphas
 alphasim <- lapply(nnn, function(nn) replicate(ns, {
+  # Draw one non-null variable per group
   indsim <- sapply(split(1:ptot, grpinds), sample, size = 1)
   indexcl <- sapply(split((1:ptot)[-indsim], grpinds[-indsim]), 
     sample, size = 1)
+  
+  # Draw the rest of non-null variables
   indsim <- c(indsim, sample((1:ptot)[-c(indsim, indexcl)], nn - p))
+  
+  # Draw alphas: sign with half probability
   alphas <- rep(0, ptot)
   alphas[indsim] <- sample(c(-1, 1), nn, replace = T)
   alphas
@@ -110,7 +121,7 @@ cat(as.character(as.POSIXct(Sys.time())), file = "temp/logsim4.txt",
   append = T)
 
 # Packages
-packs <- c("cgaim", "Matrix", "glmnet")
+packs <- c("cgaim")
 
 #----- Apply CGAIM on each simulation
 results <- foreach(k = seq_along(nnn), .packages = packs, .combine = rbind) %:% 
@@ -143,7 +154,8 @@ results <- foreach(k = seq_along(nnn), .packages = packs, .combine = rbind) %:%
     alpha_control = list(Cmat = rbind(diag(ptot), -diag(ptot)),
       bvec = rep(rep(-1/npos, pvec), 2)), 
     smooth_control = list(sp = rep(0, p)))
-  # To correct for numerical errors in OSQP/quadprog
+  
+  # Correct for numerical errors in OSQP/quadprog
   alpha_est$CGAIM <- pmin(pmax(unlist(mapply("*", res$alpha, npos)), -1), 1)
   
   # Reorganize into a data.frame and return
@@ -154,10 +166,6 @@ results <- foreach(k = seq_along(nnn), .packages = packs, .combine = rbind) %:%
 
 # Stop parallel
 stopCluster(cl)
-
-#---- Save Results
-save(results, alphasim,
-  file = "Results/1.4_Exposome.RData")
 
 #-------------------------------------------
 #    Result summary
@@ -178,7 +186,7 @@ names(ovhigh)[4] <- "high"
 # Put together in data.frame
 ovres <- Reduce(merge, list(ovmean, ovlow, ovhigh))
 
-#----- Plot all alphas
+#----- Figure 4: Plot alpha distribution
 
 # Method list
 method_list <- unique(results$model)
@@ -199,5 +207,3 @@ ggplot(ovres, aes(x = nnn, group = interaction(true, model), col = model)) +
   scale_x_continuous(name = "Number of true predictors", breaks = nnn) + 
   scale_y_continuous(name = "Estimated", n.breaks = 6) + 
   scale_color_manual(name = "", values = pal)
-
-ggsave("Figures/Figure4.pdf")

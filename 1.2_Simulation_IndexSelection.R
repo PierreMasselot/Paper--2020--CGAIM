@@ -1,25 +1,32 @@
-###############################################################################
+################################################################################
 #
-#                          Simulation study
-#                       Sample size variation
+#  R code for the simulation study of 
 #
-###############################################################################
+#   Masselot et al., 2022
+#   Constrained groupwise additive index models
+#   Biostatistics
+#
+#   Section 4.2 Index selection
+#
+#   Author: Pierre Masselot
+#
+################################################################################
 
-library(foreach)
-library(doParallel)
-library(MASS)
-library(Matrix)
-library(sfsmisc)
-library(scar)
-library(ggplot2)
-library(abind)
-library(RColorBrewer)
+#-------------------------------------------
+# Packages
+#-------------------------------------------
 
+#----- Used packages
+library(doParallel) # Parallel computing
+library(MASS) # For multivariate normal generation
+library(ggplot2) # Plotting
+library(patchwork) # Assemble ggplots
+library(RColorBrewer) # Colorpalette Blues
+
+#----- cgaim package
 # Should be installed from github
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
-source("0_Useful_functions.R")
-source("1.0_Benchmark_models.R")
 
 #-------------------------------------------
 #     Parameters
@@ -50,10 +57,10 @@ ns <- 1000
 # Number of observations
 n <- 1000
 
-# Number of nonull indices
+# Number of non-null indices
 pp <- 1:2
 
-# Noise level
+# Noise levels
 Sigmas <- c(.2, .5, 1)
 
 # Full grid of scenarios
@@ -61,7 +68,7 @@ scenarios <- expand.grid(pp = pp, sigma = Sigmas)
 
 #----- Models
 
-# Indices specification for CGAIM
+# Index specification for CGAIM
 models <- list(
   "g(X1, fcons = 'inc', acons = list(monotone = -1, sign = 1))",
   "g(X2, fcons = 'inc', acons = list(monotone = 1, sign = 1))",
@@ -82,7 +89,7 @@ set.seed(2)
 
 #----- Generate linear predictor
 
-# Uncorrelated variables
+# Matrix of uncorrelated predictors
 X <- Map(MASS::mvrnorm, n = n, mu = lapply(pvec, rep, x = 0), 
   Sigma = lapply(pvec, diag))
 names(X) <- sprintf("X%i", 1:p)
@@ -126,8 +133,7 @@ cat(as.character(as.POSIXct(Sys.time())), file = "temp/logsim2.txt",
   append = T)
 
 # Packages
-packs <- c("cgaim", "Matrix", "scar", "quadprog", "splines2", "scam", 
-  "doParallel")
+packs <- c("cgaim")
 
 # Loop
 results <- foreach(k = seq_len(nsce), .packages = packs, .combine = rbind) %:%
@@ -208,6 +214,8 @@ results <- foreach(k = seq_len(nsce), .packages = packs, .combine = rbind) %:%
     selectvar <- rbind(selectvar, CGAIM = 0)
     selectvar["CGAIM", selected] <- 1
     
+    #----- Return 
+    
     # Reorganize in data.frame and return
     data.frame(scenarios[k,,drop = F], simu = i, 
       expand.grid(method = rownames(selectvar), var = 1:p), 
@@ -216,9 +224,6 @@ results <- foreach(k = seq_len(nsce), .packages = packs, .combine = rbind) %:%
 
 # Stop parallel
 stopCluster(cl)
-
-#---- Save Results
-save(results, datasim, file = "Results/1.2_IndexSelection.RData")
 
 #-------------------------------------------
 #    Result summary
@@ -231,9 +236,6 @@ nm <- length(method_list)
 # Palette for models
 pal <- tail(brewer.pal(pmax(nm, 3), "Blues"), nm)
 names(pal) <- method_list
-
-# Fill palette
-# fpal <- c("white", "grey")
 
 # Shapes for true number of variables
 shp <- 20 + seq_along(pp)
@@ -257,9 +259,8 @@ colnames(specificity)[4] <- "specificity"
 scores <- merge(sensitivity, specificity)
 scores <- scores[order(scores$sigma, decreasing = T),]
 
-#----- Ploting them
+#----- Figure 2: Sensitivity vs specificity
 
-# Plot ROC space
 ggplot(scores) + theme_classic() +
   geom_point(aes(x = sensitivity, y = specificity, 
     fill = method, shape = as.factor(pp), size = sigma),
@@ -280,7 +281,5 @@ ggplot(scores) + theme_classic() +
   labs(x = "Sensitivity", y = "Specificity") + 
   theme(legend.position = c(0.1, 0.95), legend.justification = c(0, 1), 
     panel.grid.major = element_line(color = grey(.95)),
-    # legend.background = element_rect(fill = "white", color = "black"),
     panel.border = element_rect(fill = NA, color = "black"))
   
-ggsave("Figures/Figure2.pdf")

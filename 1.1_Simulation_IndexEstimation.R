@@ -1,29 +1,41 @@
-###############################################################################
+################################################################################
 #
-#                          Simulation study
-#                       Sample size variation
+#  R code for the simulation study of 
 #
-###############################################################################
+#   Masselot et al., 2022
+#   Constrained groupwise additive index models
+#   Biostatistics
+#
+#   Section 4.1 Index estimation
+#
+#   Author: Pierre Masselot
+#
+################################################################################
 
-library(foreach)
-library(doParallel)
-library(MASS)
-library(Matrix)
-library(sfsmisc)
-library(scar)
-library(ggplot2)
-library(abind)
-library(RColorBrewer)
-library(splines2)
-library(scam)
-library(quadprog)
-library(patchwork)
+#-------------------------------------------
+# Packages
+#-------------------------------------------
 
+#----- Used packages
+library(doParallel) # Parallel computing
+library(MASS) # For multivariate normal generation
+library(Matrix) # Used in gMAVE
+library(ggplot2) # Plotting
+library(patchwork) # Assemble ggplots
+library(RColorBrewer) # Colorpalette Blues
+library(splines2) # For increasing and convex splines used in facts
+library(quadprog) # Quadratic programming used in facts
+library(scam) # Utility functions used in facts
+
+#----- cgaim package
 # Should be installed from github
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
-source("0_Useful_functions.R")
-source("1.0_Benchmark_models.R")
+
+#----- Custom functions for benchmark models
+source("0.1_gMAVE.R")
+source("0.2_FACTS.R")
+source("0.3_PPR.R")
 
 #-------------------------------------------
 #     Parameters
@@ -42,8 +54,6 @@ Alpha <- list(
 Gfuns <- c(
   function(z) log(z - min(z) + .1), 
   function(z, lambda = 20) 1 / (1 + exp(-lambda * (z - .5))), 
-  # function(z, a1 = 1, a2 = 1, b1 = .1, b2 = 2)
-  #   a1 * exp(-b1 * (z - .7)) + a2 * exp(b2 * (z - .7))
   function(z, lambda = c(0.2118881, 0.3006585, 0.0982663, 0.0153671, 0.0016265))
     poly(z, 5) %*% lambda
 )
@@ -83,7 +93,7 @@ ptot <- sum(pvec)
 
 set.seed(1)
 
-# Loop on the various Sigmas
+# Loop on scenarios
 datasim <- apply(scenarios, 1, function(s){
   
   # Correlation matrix
@@ -104,7 +114,7 @@ datasim <- apply(scenarios, 1, function(s){
   # Scale Zs
   Z <- lapply(Z, function(z) (z - min(z)) / diff(range(z)))
   
-  # Smooth
+  # Ridge functions
   G <- mapply(function(g, z) do.call(g, list(z = z)), Gfuns, Z)
   
   # Linear predictor
@@ -131,10 +141,10 @@ writeLines(c(""), "temp/logsim1.txt")
 cat(as.character(as.POSIXct(Sys.time())), file = "temp/logsim1.txt", 
   append = T)
 
-# Packages
-packs <- c("cgaim", "Matrix", "scar", "quadprog", "splines2", "scam", "foreach")
+# Packages to load within workers
+packs <- c("cgaim", "Matrix", "quadprog", "splines2", "scam")
 
-#----- Start looping on Sigmas and simulated responses
+#----- Start looping on scenarios and simulated responses
 results <- foreach(k = seq_len(nsce), .packages = packs, 
     .combine = rbind) %:% 
   foreach(i = seq_len(ns), .packages = packs, .combine = rbind) %dopar%
@@ -177,14 +187,13 @@ results <- foreach(k = seq_len(nsce), .packages = packs,
   x <- datasim[[k]][-1]; x[[1]] <- x[[1]][,pvec[1]:1]
   comp_time["FACTS"] <- system.time(
     res <- facts(x, dat$Y, gshape = c("inc", "inc", "cvx"), 
-      thetashape = c("inc", "inc", "nc"))
-  )[3]
+      thetashape = c("inc", "inc", "nc")))[3]
   alpha <- res$theta; alpha[[1]] <- rev(alpha[[1]])
   alpha_est$FACTS <- unlist(alpha)
 
   # Apply gMAVE
   comp_time["gMAVE"] <- system.time(
-    res <- gmave(dat$Y, datasim[[k]][-1], alpha.control = list(norm.type = "1"))
+    res <- gmave(dat$Y, datasim[[k]][-1], alpha.norm = "1")
   )[3]
   alpha_est$gMAVE <- abs(res)
 
@@ -202,10 +211,8 @@ results <- foreach(k = seq_len(nsce), .packages = packs,
     time = rep(comp_time, each = ptot))
 }
 
+# Close workers
 stopCluster(cl)
-
-#---- Save Results
-save(results, datasim, file = "Results/1.1_RMSE.RData")
 
 #-------------------------------------------
 #  Prepare plots
@@ -244,7 +251,7 @@ err_summary <- cbind(err_summary[names(err_summary) != "sqerr"],
 err_summary$high <- with(err_summary, est + 1.96 * se)
 err_summary$low <- with(err_summary, est - 1.96 * se)
 
-#----- Plots
+#----- Figure 1: RMSE
 
 # Create common plot layout
 plotlay <- ggplot(err_summary, aes(y = est, ymin = low, 
@@ -281,21 +288,15 @@ plotn + plotrho + plotsigma +
   plot_layout(design = design, guides = "collect", 
     widths = rep(1, 4), heights = rep(1,2))
 
-# Save
-ggsave("Figures/Figure1.pdf", width = 12, height = 7)
-
 #-------------------------------------------
 #  Detail of alphas
 #-------------------------------------------
 
-# Add info about index
-# ind <- sprintf("Index %i", rep(1:p, pvec))
-# names(ind) <- 1:ptot
-# results$index <- ind[as.character(results$alpha)]
+# Transform model as factor
 results$model <- factor(results$model, 
   levels = c("CGAIM", "GAIM", "MGAIM", "gMAVE", "FACTS", "PPR"))
 
-# Plot layout
+# Supplementary Figure 3
 alphaplot <- ggplot(results) + theme_classic() +
   geom_boxplot(aes(x = factor(alpha), y = est, color = model, shape = model)) + 
   scale_color_manual(values = pal, name = "Method") + 
@@ -312,7 +313,6 @@ alphaplot <- ggplot(results) + theme_classic() +
   theme(plot.margin = unit(c(3, 1, 1, 1), "lines"), 
     plot.title = element_text(hjust = .5, size = 15),
     panel.border = element_rect(fill = NA, color = "black"))
-  # facet_grid(. ~ index, scales = "free_x")
 
 # Execute plot for each scenario
 allplots <- lapply(seq_len(nsce), function(j) alphaplot %+% subset(results,
@@ -323,9 +323,6 @@ allplots <- lapply(seq_len(nsce), function(j) alphaplot %+% subset(results,
 
 # Put together
 wrap_plots(allplots, ncol = 2, nrow = 5, guides = "collect")
-
-# Save
-ggsave("Figures/SupFigure3.pdf", height = 30, width = 20)
 
 #-------------------------------------------
 # Computation time
@@ -338,10 +335,6 @@ time_sum <- aggregate(time ~ model, data = results, summary)
 char_time <- apply(time_sum[[2]], 1, function(x) 
   sprintf("%2.2f (%2.2f - %2.2f)", x["Mean"], x["1st Qu."], x["3rd Qu."]))
 
-# Nice table
+# Supplementary Table 4
 time_tab <- cbind(Model = time_sum[[1]], Time = char_time)
 time_tab <- time_tab[match(names(pal), time_tab[,1]),]
-
-# Export
-write.table(time_tab, file = "Figures/SupTable1.csv", sep = ",", quote = F,
-  row.names = F)

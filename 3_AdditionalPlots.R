@@ -1,22 +1,32 @@
 ################################################################################
 #
-#                          Additional representations
+#  Additional graphics found in the Supplementary Materials of
+#
+#   Masselot et al., 2022
+#   Constrained groupwise additive index models
+#   Biostatistics
+#
+#   Supplementary materials
+#
+#   Author: Pierre Masselot
 #
 ################################################################################
 
-library(viridis)
-library(corrplot)
+#-------------------------------------------
+# Packages
+#-------------------------------------------
+
+library(viridis) # Color palettes
+library(corrplot) # To plot correlation matrix
 
 #-----------------------
-# True functions g_j used in simulations
+# Supplementary Figure 1
 #-----------------------
 
 # True functions
 Gfuns <- c(
   function(z) log(z - min(z) + .1), 
   function(z, lambda = 20) 1 / (1 + exp(-lambda * (z - .5))), 
-  # function(z, a1 = 1, a2 = 1, b1 = .1, b2 = 2)
-  #   a1 * exp(-b1 * (z - .7)) + a2 * exp(b2 * (z - .7))
   function(z, lambda = c(0.2118881, 0.3006585, 0.0982663, 0.0153671, 0.0016265))
     poly(z, 5) %*% lambda
 )
@@ -32,11 +42,8 @@ legend("topleft", legend = sapply(seq_along(Gfuns),
     function(i) as.expression(bquote(g[.(i)](.)))),
   col = viridis(length(Gfuns)), lty = 1, lwd = 2, bty = "n")
 
-# Save
-dev.print(pdf, file = "Figures/SupFigure1.pdf")
-
 #-----------------------
-# Correlation matrix of experiment 4
+# Supplementary Figure 2
 #-----------------------
 
 # Load correlation matrix (Robinson et al. 2018)
@@ -63,6 +70,3 @@ segments(x0 = .5, x1 = length(groupinds) + .5,
   y0 = length(groupinds) - grouplims + 1)
 rect(.5, length(groupinds) + .5, length(groupinds) + .5, .5, 
   col = NA, border = "black")
-
-# Save
-dev.print(pdf, file = "Figures/SupFigure2.pdf", height = 7, width = 8)

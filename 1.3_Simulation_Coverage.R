@@ -1,26 +1,33 @@
-###############################################################################
+################################################################################
 #
-#                          Simulation study
-#                       Sample size variation
+#  R code for the simulation study of 
 #
-###############################################################################
+#   Masselot et al., 2022
+#   Constrained groupwise additive index models
+#   Biostatistics
+#
+#   Section 4.3 Coverage
+#
+#   Author: Pierre Masselot
+#
+################################################################################
 
-library(foreach)
-library(doParallel)
-library(MASS)
-library(Matrix)
-library(sfsmisc)
-library(scar)
-library(ggplot2)
-library(abind)
-library(RColorBrewer)
-library(data.table)
+#-------------------------------------------
+# Packages
+#-------------------------------------------
 
+#----- Used packages
+library(doParallel) # Parallel computing
+library(MASS) # For multivariate normal generation
+library(ggplot2) # Plotting
+library(patchwork) # Assemble ggplots
+library(RColorBrewer) # Colorpalette Blues
+library(data.table) # For function between
+
+#----- cgaim package
 # Should be installed from github
 # install_github("PierreMasselot/cgaim")
 library(cgaim)
-source("0_Useful_functions.R")
-source("1.0_Benchmark_models.R")
 
 #-------------------------------------------
 #     Parameters
@@ -50,9 +57,6 @@ B <- 500
 
 # Noise levels
 Sigmas <- c(.2, .5, 1)
-
-# Coverage probabilities
-cprobs <- c(.8, .9, .95)
 
 #----- Derived objects -----
 p <- length(Alpha)
@@ -115,32 +119,25 @@ results <- foreach(s = seq_along(Sigmas), .packages = packs,
   
   # Compute Bootstrap confidence interval by residual resampling
   bootres <- boot.cgaim(res, B = B, boot.type = "residuals")
-  cis$Residuals <- lapply(cprobs, function(p) confint(bootres, 
-    parm = 1, level = p)$alpha)
+  cis$Bootstrap <- confint(bootres, parm = 1)$alpha
   
   # Compute normal confidence interval
-  cis$Normal <- lapply(cprobs, function(p) confint(res, B = B, type = "norm", 
-    parm = 1, level = p)$alpha)
+  cis$Normal <- confint(res, B = B, type = "norm", parm = 1)$alpha
   
   # Put them all together
-  allcis <- do.call(rbind, unlist(cis, recursive = F))
+  allcis <- do.call(rbind, cis)
   colnames(allcis) <- c("low", "high")
   
   # output
   data.frame(sigma = Sigmas[s], simu = i, 
-    type = rep(names(cis), each = ptot * length(cprobs)),
-    proba = rep(rep(cprobs, each = ptot), length(cis)),
-    alpha = rep(1:ptot, length(cis) * length(cprobs)), 
-    est = rep(unlist(res$alpha), length(cis) * length(cprobs)), 
+    type = rep(names(cis), each = ptot),
+    alpha = rep(1:ptot, length(cis)), 
+    est = rep(unlist(res$alpha), length(cis)), 
     allcis)
 }
 
-
+# Stop parallel
 stopCluster(cl)
-
-#---- Save Results
-
-save(results, Ysim, file = "Results/1.3_Coverage.RData")
 
 #-------------------------------------------
 #     Results
@@ -154,7 +151,7 @@ results$includes <- between(unlist(Alpha)[results$alpha], results$low - eps,
   results$high + eps)
 
 # Compute average estimated alpha
-mean_est <- aggregate(est ~ alpha + proba + type + sigma, results, mean)
+mean_est <- aggregate(est ~ alpha + type + sigma, results, mean)
 names(mean_est)[length(mean_est)] <- "mean_est"
 results <- merge(results, mean_est)
 
@@ -162,11 +159,11 @@ results <- merge(results, mean_est)
 results$includes_mean <- between(results$mean_est, results$low, results$high)
 
 # Compute coverage for each
-ov_coverage <- aggregate(cbind(includes, includes_mean) ~ type + sigma + proba, 
+ov_coverage <- aggregate(cbind(includes, includes_mean) ~ type + sigma, 
   results, function(x) c(coverage = mean(x), 
     se = sqrt(mean(x) * (1 - mean(x)) / ns)))
 ov_coverage <- do.call(data.frame, ov_coverage)
-names(ov_coverage)[-(1:3)] <- apply(
+names(ov_coverage)[-(1:2)] <- apply(
   expand.grid(c("est", "se"), c("cover", "bc_cover")), 1, 
   function(x) paste(rev(x), collapse = "_"))
 
@@ -174,10 +171,10 @@ names(ov_coverage)[-(1:3)] <- apply(
 
 # Compute coverage
 alpha_coverage <- aggregate(
-  cbind(includes, includes_mean) ~ type + alpha + sigma + proba, data = results, 
+  cbind(includes, includes_mean) ~ type + alpha + sigma, data = results, 
   function(x) c(coverage = mean(x), se = sqrt(mean(x) * (1 - mean(x)) / ns)))
 alpha_coverage <- do.call(data.frame, alpha_coverage)
-names(alpha_coverage)[-(1:4)] <- apply(
+names(alpha_coverage)[-(1:3)] <- apply(
   expand.grid(c("est", "se"), c("cover", "bc_cover")), 1, 
   function(x) paste(rev(x), collapse = "_"))
 
@@ -191,10 +188,9 @@ ntypes <- length(unique(ov_coverage$type))
 # Color palette
 colpal <- tail(brewer.pal(pmax(ntypes, 3), "Blues"), ntypes)
 
-#----- Overall bias-corrected coverage
+#----- Figure 3: Overall bias-corrected coverage
 
-# Plot
-ggplot(subset(ov_coverage, proba == .95)) + theme_classic() +
+ggplot(ov_coverage) + theme_classic() +
   geom_pointrange(aes(x = factor(sigma), y = bc_cover_est, 
     ymin = bc_cover_est - bc_cover_se, 
     ymax = bc_cover_est + bc_cover_se, 
@@ -210,12 +206,9 @@ ggplot(subset(ov_coverage, proba == .95)) + theme_classic() +
     panel.grid.major = element_line(color = "grey", linetype = 3)) + 
   ylim(c(min(with(ov_coverage, bc_cover_est - bc_cover_se)), 1))
 
-# Save
-ggsave("Figures/Figure3.pdf")
+#----- Supplementary Figure 4: Alpha specific bias-corrected coverage 
 
-#----- Alpha specific bias-corrected coverage 
-
-ggplot(subset(alpha_coverage, proba == .95)) + theme_classic() +
+ggplot(alpha_coverage) + theme_classic() +
   geom_pointrange(aes(x = alpha, y = bc_cover_est, 
     ymin = bc_cover_est - bc_cover_se, 
     ymax = bc_cover_est + bc_cover_se, 
@@ -237,62 +230,3 @@ ggplot(subset(alpha_coverage, proba == .95)) + theme_classic() +
     axis.line.x.top = element_blank(),
     panel.border = element_rect(fill = NA),
     panel.grid.major.y = element_line(color = "grey", linetype = 3))
-
-# Save
-ggsave("Figures/SupFigure4.pdf", height = 7, width = 10)
-
-
-
-# #----- Check when alphas are involved in active constraints
-# 
-# # Get overall constraint matrix
-# res <- cgaim(y ~ 
-#     g(X1, fcons = "inc", acons = list(monotone = -1, sign = 1)) + 
-#     g(X2, fcons = "inc", acons = list(monotone = 1, sign = 1)) + 
-#     g(X3, fcons = "cvx", acons = list(sign = 1)),
-#   data = c(list(y = Ysim[[1]][,1]), X), 
-#   smooth_control = list(sp = rep(0, p)))
-# Cmat <- res$alpha_control$Cmat
-# ctol <- res$alpha_control$ctol
-# 
-# 
-# # Assess active constraints
-# active <- aggregate(est ~ sigma + simu + type, results, 
-#   function(a) Cmat %*% a <= ctol)
-# 
-# # get alphas involved in active constraints
-# alpha_in <- apply(active[[4]], 1, function(x){
-#   whichcons <- Cmat[x,,drop = F]
-#   if (nrow(whichcons) > 0) colSums(abs(whichcons)) > 0 else rep(F, ptot)
-# })
-# 
-# # Add to results data.frame
-# active_alpha <- cbind(active[rep(1:nrow(active), each = nrow(Cmat)), 1:3], 
-#   alpha = rep(1:nrow(Cmat), nrow(active)), active = c(alpha_in))
-# results <- merge(results, active_alpha)
-# 
-# # Compute coverage
-# active_coverage <- aggregate(includes_mean ~ type + alpha + sigma + active, 
-#   data = results, mean)
-# active_coverage$sd <- with(active_coverage, 
-#   sqrt(includes_mean * (1 - includes_mean) / ns))
-# 
-# # Plot
-# ggplot(subset(active_coverage, type == "Normal")) + theme_classic() +
-#   geom_pointrange(aes(x = alpha, y = includes_mean, 
-#     ymin = pmax(includes_mean - 1.96 * sd, 0), 
-#     ymax = pmin(includes_mean + 1.96 * sd, 1), 
-#     group = active, col = active, shape = active), 
-#     position = position_dodge(width = .5)) + 
-#   geom_hline(yintercept = c(.95), linetype = 2) + 
-#   geom_vline(xintercept = cumsum(pvec) + .5, linetype = 2, col = "grey") + 
-#   labs(y = "Coverage", shape = "Bootstrap type") + 
-#   scale_x_continuous(name = "Covariate", breaks = seq_len(ptot), 
-#     labels = unlist(lapply(pvec, seq, from = 1)),
-#     sec.axis = sec_axis(trans = ~., name = "", 
-#       breaks = tapply(1:ptot, rep(1:p, pvec), mean), 
-#       labels = sprintf("Index %i", 1:p))) + 
-#   theme(axis.ticks.x.top = element_line(linetype = 0),
-#     axis.text.x.top = element_text(size = 12),
-#     axis.line.x.top = element_blank()) +
-#   facet_wrap(~ sigma)
