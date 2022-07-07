@@ -17,19 +17,19 @@ This repository contains the R code used to perform the four simulations studies
 The repository includes the following scripts.
 
 0. These scripts contain functions implementing the methods to which the CGAIM is compared.
-  1. *0.1_gMAVE.R*: Implements the gMAVE estimator that estimates groupwise indices based on local-linear regression.
-  2. *0.2_FACTS.R*: Implements the FACTS model, a similar model to gMAVE with the addition of some constraints on the estimates.
-  3. *0.3_PPR.R*: A simple wrapper for the `ppr` function in R.
+    1. *0.1_gMAVE.R*: Implements the gMAVE estimator that estimates groupwise indices based on local-linear regression.
+    2. *0.2_FACTS.R*: Implements the FACTS model, a similar model to gMAVE with the addition of some constraints on the estimates.
+    3. *0.3_PPR.R*: A simple wrapper for the `ppr` function in R.
   
 1. The following scripts implement the four simulation experiments performed in the article.
-  1. *1.1_Simulation_IndexEstimation.R*: Comparison of the RMSE of each algorithm in the estimation of index coefficients `alpha`.
-  2. *1.2_Simulation_IndexSelection.R*: Evaluation of index selection by the proposed GCV criterion.
-  3. *1.3_Simulation_Coverage.R*: Estimation of confidence intervals coverage from two inference procedures proposed in the paper.
-  4. *1.4_Simulation_Exposome.R*: Evaluation of the CGAIM on a more complex setting mimicking exposome studies.
+    1. *1.1_Simulation_IndexEstimation.R*: Comparison of the RMSE of each algorithm in the estimation of index coefficients `alpha`.
+    2. *1.2_Simulation_IndexSelection.R*: Evaluation of index selection by the proposed GCV criterion.
+    3. *1.3_Simulation_Coverage.R*: Estimation of confidence intervals coverage from two inference procedures proposed in the paper.
+    4. *1.4_Simulation_Exposome.R*: Evaluation of the CGAIM on a more complex setting mimicking exposome studies.
   
 2. The following scripts implement the applications performed in the paper.
-  1. *2.1_CaseStudy_Heat.R*: Fully reproducible code for the heat index construction in Montreal.
-  2. *2.2_CaseStudy_Pollution.R*: Reproducible code for the air pollution index construction application found in Supplementary Materials.
+    1. *2.1_CaseStudy_Heat.R*: Fully reproducible code for the heat index construction in Montreal.
+    2. *2.2_CaseStudy_Pollution.R*: Reproducible code for the air pollution index construction application found in Supplementary Materials.
   
 3. Additional code creating illustrative plots found in Supplementary Materials.
 
