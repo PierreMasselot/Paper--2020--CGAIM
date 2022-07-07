@@ -24,8 +24,6 @@ library(patchwork) # Assemble ggplots
 library(RColorBrewer) # Colorpalette Blues
 
 #----- cgaim package
-# Should be installed from github
-# install_github("PierreMasselot/cgaim")
 library(cgaim)
 
 #-------------------------------------------
@@ -162,8 +160,7 @@ results <- foreach(k = seq_len(nsce), .packages = packs, .combine = rbind) %:%
         indices <- sprintf("g(X%i)", c(selected, remain[w]))
         rhs <- paste(indices, collapse = " + ")
         form <- paste0("y ~ ", rhs)
-        res <- cgaim(as.formula(form), data = dat, 
-          alpha_control = list(solver = "osqp"))
+        res <- cgaim(as.formula(form), data = dat)
         gcvs[w] <- res$gcv
       }
       
@@ -194,9 +191,8 @@ results <- foreach(k = seq_len(nsce), .packages = packs, .combine = rbind) %:%
       for (w in seq_along(remain)){
         rhs <- paste(models[c(selected, remain[w])], collapse = " + ")
         form <- paste0("y ~ ", rhs)
-        res <- cgaim(as.formula(form), data = dat, 
-          alpha_control = list(solver = "osqp"),
-          smooth_control = list(sp = rep(0, v)))
+        res <- cgaim(as.formula(form), data = dat,
+          control = list(sm_pars = list(sp = rep(0, v))))
         gcvs[w] <- res$gcv
       }
       

@@ -28,8 +28,6 @@ library(quadprog) # Quadratic programming used in facts
 library(scam) # Utility functions used in facts
 
 #----- cgaim package
-# Should be installed from github
-# install_github("PierreMasselot/cgaim")
 library(cgaim)
 
 #----- Custom functions for benchmark models
@@ -172,15 +170,15 @@ results <- foreach(k = seq_len(nsce), .packages = packs,
       g(X1, fcons = "inc", acons = list(monotone = -1, sign = 1)) + 
       g(X2, fcons = "inc", acons = list(monotone = 1, sign = 1)) + 
       g(X3, fcons = "cvx", acons = list(sign = 1)),
-    data = dat, smooth_control = list(sp = rep(0, p))))[3]
+    data = dat, control = list(sm_pars = list(sp = rep(0, p)))))[3]
   alpha_est$CGAIM <- unlist(res$alpha)
 
   # Apply misspecified GAIM
   comp_time["MGAIM"] <- system.time(res <- cgaim(Y ~ 
       g(X1, fcons = "inc", acons = list(monotone = 1, sign = 1)) + 
       g(X2, fcons = "inc", acons = list(monotone = -1, sign = 1)) + 
-      g(X3, fcons = "ccv", acons = list(sign.const = 1)),
-    data = dat, smooth_control = list(sp = rep(0, p))))[3]
+      g(X3, fcons = "ccv", acons = list(sign = 1)),
+    data = dat, control = list(sm_pars = list(sp = rep(0, p)))))[3]
   alpha_est$MGAIM <- unlist(res$alpha)
 
   # Apply cumulative effect GAM (Xia & Tong, 2005)

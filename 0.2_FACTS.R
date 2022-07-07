@@ -76,7 +76,7 @@ facts <- function(x, y, k = NULL, h = NULL, gshape = "nc", thetashape = "nc",
   istcons <- thetashape == "inc"
   Blist <- vector("list", p)
   Blist[istcons] <- Map(function(sh, d){
-    sig <- smooth.construct(s(x, bs = "mpi", k = d), 
+    sig <- smooth.construct(mgcv::s(x, bs = "mpi", k = d), 
       data = data.frame(x = 1:n), knots = NULL)$Sigma 
     cbind(1, rbind(0, sig))
   }, thetashape[istcons], pvec[istcons])  

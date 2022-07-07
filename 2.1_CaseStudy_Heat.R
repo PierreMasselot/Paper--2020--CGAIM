@@ -22,8 +22,6 @@ library(tsModel) # For Lag function
 library(doParallel) # For parallel
 
 #----- cgaim package
-# Should be installed from github
-# install_github("PierreMasselot/cgaim")
 library(cgaim)
 
 #---------------------------------------------------
@@ -89,12 +87,12 @@ termlist <- c("g(Tmin, fcons = 'inc', acons = list(monotone = -1, sign = 1))",
 creslist <- apply(modlist, 1, function(i){
   formula <- paste(c(formbasis, termlist[as.logical(i)]), collapse = " + ")
   cgaim(as.formula(formula), data = datamod, 
-    smooth_control = list(sp = rep(0, 2 + sum(i))))
+    control = list(sm_pars = list(sp = rep(0, 2 + sum(i)))))
 })
 
 # Keep model with lowest GCV
 gcvlist <- sapply(creslist, "[[", "gcv")
-cres <- creslist[[which.min(gcvlist)]]
+cres <- creslist[[6]]
 
 #---- Fit the GAIM
 
@@ -105,12 +103,12 @@ utermlist <- c("g(Tmin)", "g(Tmax)", "g(Vp)")
 ureslist <- apply(modlist, 1, function(i){
   formula <- paste(c(formbasis, utermlist[as.logical(i)]), collapse = " + ")
   cgaim(as.formula(formula), data = datamod, 
-    smooth_control = list(sp = rep(0, 2 + sum(i))))
+    control = list(sm_pars = list(sp = rep(0, 2 + sum(i)))))
 })
 
 # Keep model with lowest GCV
 ugcvlist <- sapply(ureslist, "[[", "gcv")
-ures <- ureslist[[which.min(ugcvlist)]]
+ures <- ureslist[[6]]
 
 #---- Confidence intervals through bootstrap
 

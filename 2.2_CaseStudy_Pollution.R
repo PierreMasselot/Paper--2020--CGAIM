@@ -22,8 +22,6 @@ library(tsModel) # For Lag function
 library(doParallel) # For parallel
 
 #----- cgaim package
-# Should be installed from github
-# install_github("PierreMasselot/cgaim")
 library(cgaim)
 
 #---------------------------------------------------
@@ -55,14 +53,14 @@ cres <- cgaim(MCV ~
     g(NO2, O3, PM2.5, fcons = "inc", acons = list(sign = 1),
       s_opts = list(k = 10), label = "Pol") + 
     s(dos, s_opts = list(k = 7)) + s(year, s_opts = list(k = 3)),
-  data = datatab, smooth_control = list(sp = rep(0, 3))
+  data = datatab, control = list(sm_pars = list(sp = rep(0, 3)))
 )
 
 # Fit unconstrained model
 ures <- cgaim(MCV ~ 
     g(NO2, O3, PM2.5, label = "Pol") + 
     s(dos, s_opts = list(k = 7)) + s(year, s_opts = list(k = 3)),
-  data = datatab, smooth_control = list(sp = rep(0, 3))
+  data = datatab, control = list(sm_pars = list(sp = rep(0, 3)))
 )
 
 # Keep number of indices and terms

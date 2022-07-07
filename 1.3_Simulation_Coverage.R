@@ -25,8 +25,6 @@ library(RColorBrewer) # Colorpalette Blues
 library(data.table) # For function between
 
 #----- cgaim package
-# Should be installed from github
-# install_github("PierreMasselot/cgaim")
 library(cgaim)
 
 #-------------------------------------------
@@ -112,7 +110,7 @@ results <- foreach(s = seq_along(Sigmas), .packages = packs,
       g(X1, fcons = "inc", acons = list(monotone = -1, sign = 1)) + 
       g(X2, fcons = "inc", acons = list(monotone = 1, sign = 1)) + 
       g(X3, fcons = "cvx", acons = list(sign = 1)),
-    data = dat, smooth_control = list(sp = rep(0, p)))
+    data = dat, control = list(sm_pars = list(sp = rep(0, p))))
   
   #----- Compute confidence intervals
   cis <- list()

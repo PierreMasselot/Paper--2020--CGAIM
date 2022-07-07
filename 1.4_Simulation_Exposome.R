@@ -24,8 +24,6 @@ library(patchwork) # Assemble ggplots
 library(RColorBrewer) # Colorpalette Blues
 
 #----- cgaim package
-# Should be installed from github
-# install_github("PierreMasselot/cgaim")
 library(cgaim)
 
 #----- Load correlation matrix (Robinson et al. 2018)
@@ -143,7 +141,7 @@ results <- foreach(k = seq_along(nnn), .packages = packs, .combine = rbind) %:%
     paste(sprintf("g(%s)", 
       names(groups)), collapse = " + "))
   res <- cgaim(as.formula(formula), data = dat,
-    smooth_control = list(sp = rep(0, p)))
+    control = list(sm_pars = list(sp = rep(0, p))))
   alpha_est$GAIM <- unlist(mapply("*", res$alpha, npos))
   
   # Apply CGAIM
@@ -151,9 +149,8 @@ results <- foreach(k = seq_along(nnn), .packages = packs, .combine = rbind) %:%
     names(groups), c("cvx", "inc", "inc", "inc", "inc")), 
     collapse = " + "))
   res <- cgaim(as.formula(formula), data = dat, 
-    alpha_control = list(Cmat = rbind(diag(ptot), -diag(ptot)),
-      bvec = rep(rep(-1/npos, pvec), 2)), 
-    smooth_control = list(sp = rep(0, p)))
+    Cmat = rbind(diag(ptot), -diag(ptot)), bvec = rep(rep(-1/npos, pvec), 2), 
+    control = list(sm_pars = list(sp = rep(0, p))))
   
   # Correct for numerical errors in OSQP/quadprog
   alpha_est$CGAIM <- pmin(pmax(unlist(mapply("*", res$alpha, npos)), -1), 1)
